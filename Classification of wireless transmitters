@@ -1,0 +1,90 @@
+import pandas as pd
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import silhouette_score
+
+# Načtení dat
+data = pd.read_csv("Data_prepared_final.csv")
+
+# Odstranění sloupce "Unnamed: 0" a "time [s]"
+data.drop(columns=['Unnamed: 0', 'time [s]'], inplace=True)
+
+# Zobrazení prvních několika řádků dat
+print(data.head())
+
+# Selekce dat pro K-means
+kmeans_data = data[['cfo_meas', 'cfo_demod', 'gain_imb', 'iq_imb', 'or_off', 'quadr_err', 'ph_err', 'mag_err', 'evm']]
+
+# Normalizace dat
+scaler = StandardScaler()
+normalized_data = scaler.fit_transform(kmeans_data)
+
+# Určení optimálního počtu shluků pomocí metody "Lbow"
+inertia = []
+for k in range(1, 20):
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans.fit(normalized_data)
+    inertia.append(kmeans.inertia_)
+
+# Vykreslení "L-bow" grafu
+plt.plot(range(1, 20), inertia, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('Inertia')
+plt.title('Elbow Method')
+plt.show()
+
+# Inicializace a trénování modelu K-means s počtem shluků 8
+kmeans = KMeans(n_clusters=8, random_state=42)
+kmeans.fit(normalized_data)
+
+# Přidání sloupce s přidělenými shluky zpět do našeho původního DataFrame
+data['cluster'] = kmeans.labels_
+
+# Výpis statistik pro každý shluk
+for cluster in range(8):
+    print(f"Cluster {cluster}:")
+    print(data[data['cluster'] == cluster].describe())
+
+# Rozdělení dat na trénovací a testovací sady
+X_train, X_test, y_train, y_test = train_test_split(normalized_data, kmeans.labels_, test_size=0.2, random_state=42)
+
+# Inicializace a trénování Random Forest Classifieru
+rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_classifier.fit(X_train, y_train)
+
+# Predikce na testovacích datech
+y_pred = rf_classifier.predict(X_test)
+
+# Vyhodnocení výkonnosti modelu
+accuracy = accuracy_score(y_test, y_pred)
+print("Přesnost modelu:", accuracy)
+
+# Výpis klasifikačního reportu
+print("\nKlasifikační report:")
+print(classification_report(y_test, y_pred))
+
+# Pole pro uchování hodnot Silhouette score
+silhouette_scores = []
+
+# Vyzkoušení různých počtů shluků
+for k in range(2, 20):
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans.fit(normalized_data)
+    labels = kmeans.labels_
+    silhouette_scores.append(silhouette_score(normalized_data, labels))
+
+# Vykreslení grafu Silhouette score pro různé počty shluků
+plt.plot(range(2, 20), silhouette_scores, marker='o')
+plt.xlabel('Number of clusters')
+plt.ylabel('Silhouette Score')
+plt.title('Silhouette Score for different numbers of clusters')
+plt.show()
+
+# Vykreslení scatter plotů pro všechny kombinace párů
+sns.pairplot(data, hue='cluster', palette='Dark2', diag_kind='kde')
+plt.show()
